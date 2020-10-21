@@ -37,6 +37,7 @@ $VolumeSize        = "100m"                # Size of archive volume parts - maxi
 $IsPublic          = 0                     # 0 = Private, 1 = Unlisted, 2 = Public in site search
 $VerboseConsole    = $True                 # If true, will output debug to console
 $VerboseFile       = $True                 # If true, will output debug to file
+$DaysToKeep        = 5                     # Number of days to keep backups on local filesystem - all others will be deleted at end of script
 
 <###   EMAIL VARIABLES   ###>
 $EmailFrom         = "notify@mydomain.tld"

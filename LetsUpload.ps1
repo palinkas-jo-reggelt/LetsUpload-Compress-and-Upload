@@ -82,9 +82,9 @@ $Error.Clear()
 $UploadName = $UploadName -Replace '\s','-'
 $UploadName = $UploadName -Replace '[^a-zA-Z0-9-]',''
 If ($UploadName) {
-	$BackupName = "$UploadName-$((Get-Date).ToString('yyyy-MM-dd'))"
+	$BackupName = "$((Get-Date).ToString('yyyy-MM-dd'))-$UploadName"
 } Else {
-	$BackupName = "Backup-$((Get-Date).ToString('yyyy-MM-dd'))"
+	$BackupName = "$((Get-Date).ToString('yyyy-MM-dd'))-Backup"
 }
 
 <#  Delete old debug file and create new  #>
@@ -236,10 +236,31 @@ Catch {
 
 Debug "Upload finished in $([int]((New-Timespan $StartUpload).TotalMinutes)) minutes."
 
-<#  Email results  #>
+<#  Delete old backups  #>
+$FilesToDel = Get-ChildItem -Path $BackupLocation -Recurse | Where-Object {$_.LastWriteTime -lt ((Get-Date).AddDays(-$DaysToKeep))}
+$CountDel = $FilesToDel.Count
+If ($CountDel -gt 0) {Debug "Deleting $CountDel items older than $DaysToKeep days"}
+$FilesToDel | ForEach {
+	$FullName = $_.FullName
+	$Name = $_.Name
+	If (Test-Path $_.FullName -PathType Leaf) {
+		Remove-Item -Force -Path $FullName
+		Debug "Deleting file  : $Name"
+	}
+	If (Test-Path $_.FullName -PathType Container) {
+		Remove-Item -Force -Recurse -Path $FullName
+		Debug "Deleting folder: $Name"
+	}
+}
+
+<#  Finish up and email results  #>
 Debug "Upload sucessful. $Count files uploaded to $FolderURL"
 Email "Upload sucessful. $Count files uploaded to $FolderURL"
-Debug "Script completed in $([int]((New-Timespan $StartScript).TotalMinutes)) minutes."
-Email "Script completed in $([int]((New-Timespan $StartScript).TotalMinutes)) minutes."
+$EndTime = New-TimeSpan $StartScript
+If (([int]($EndTime).Hours) -eq 0) {$Hours = ""} ElseIf (([int]($EndTime).Hours) -eq 1) {$Hours = "1 hour,"} Else {$Hours = "$(($EndTime).Hours) hours"}
+If (([int]($EndTime).Minutes) -eq 0) {$Minutes = ""} ElseIf (([int]($EndTime).Minutes) -eq 1) {$Minutes = "1 minute,"} Else {$Minutes = "$(($EndTime).Minutes) minutes"}
+If (([int]($EndTime).Seconds) -eq 0) {$Seconds = ""} ElseIf (([int]($EndTime).Seconds) -eq 1) {$Seconds = "1 second,"} Else {$Seconds = "$(($EndTime).Seconds) seconds"}
+Debug "Script completed in $Hours $Minutes $Seconds"
+Email "Script completed in $Hours $Minutes $Seconds"
 Debug "Sending Email"
 EmailResults
