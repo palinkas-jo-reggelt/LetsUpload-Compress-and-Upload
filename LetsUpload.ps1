@@ -11,7 +11,6 @@
 
 .PARAMETER UploadFolder
 	Specifies the folder on local filesystem to compress and upload
-	DO NOT include trailing slash "\"
 	
 .PARAMETER UploadName
 	Specifies the name (description) of the archive to be created as well as letsupload folder name
@@ -47,8 +46,8 @@ Catch {
 
 <###   FUNCTIONS   ###>
 Function Debug ($DebugOutput) {
-	If ($VerboseFile) {Write-Output "$(Get-Date -f G) $DebugOutput" | Out-File $DebugLog -Encoding ASCII -Append}
-	If ($VerboseConsole) {Write-Host "$(Get-Date -f G) $DebugOutput"}
+	If ($VerboseFile) {Write-Output "$(Get-Date -f G) : $DebugOutput" | Out-File $DebugLog -Encoding ASCII -Append}
+	If ($VerboseConsole) {Write-Host "$(Get-Date -f G) : $DebugOutput"}
 }
 
 Function Email ($EmailOutput) {
@@ -72,11 +71,39 @@ Function EmailResults {
 	}
 }
 
+Function ElapsedTime ($TimeSpan) {
+	If (([int]($TimeSpan).TotalHours) -eq 0) {$Hours = ""} ElseIf (([int]($TimeSpan).TotalHours) -eq 1) {$Hours = "1 hour "} Else {$Hours = "$(($TimeSpan).TotalHours) hours "}
+	If (([int]($TimeSpan).Minutes) -eq 0) {$Minutes = ""} ElseIf (([int]($TimeSpan).Minutes) -eq 1) {$Minutes = "1 minute "} Else {$Minutes = "$(($TimeSpan).Minutes) minutes "}
+	If (([int]($TimeSpan).Seconds) -eq 0) {$Seconds = ""} ElseIf (([int]($TimeSpan).Seconds) -eq 1) {$Seconds = "1 second"} Else {$Seconds = "$(($TimeSpan).Seconds) seconds"}
+	Return "$Hours$Minutes$Seconds"
+}
+
 <###   BEGIN SCRIPT   ###>
 $StartScript = Get-Date
 
 <#  Clear out error variable  #>
 $Error.Clear()
+
+<#  Delete old debug file and create new  #>
+$VerboseEmail = "$PSScriptRoot\VerboseEmail.log"
+If (Test-Path $VerboseEmail) {Remove-Item -Force -Path $VerboseEmail}
+New-Item $VerboseEmail
+$DebugLog = "$PSScriptRoot\LetsUploadDebug.log"
+If (Test-Path $DebugLog) {Remove-Item -Force -Path $DebugLog}
+New-Item $DebugLog
+
+<#  Validate backup folder  #>
+$UF = $UploadFolder -Replace('\\$','')
+If (Test-Path $UF) {
+	Debug "The folder to be backed up is $UF"
+} Else {
+	Debug "Error : The folder to be backed up could not be found. Quitting Script"
+	Debug "$UploadFolder does not exist"
+	Email "Error : The folder to be backed up could not be found. Quitting Script"
+	Email "$UploadFolder does not exist"
+	EmailResults
+	Exit
+}
 
 <#  Use UploadName (or not)  #>
 $UploadName = $UploadName -Replace '\s','-'
@@ -87,22 +114,14 @@ If ($UploadName) {
 	$BackupName = "$((Get-Date).ToString('yyyy-MM-dd'))-Backup"
 }
 
-<#  Delete old debug file and create new  #>
-$VerboseEmail = "$PSScriptRoot\VerboseEmail.log"
-If (Test-Path $VerboseEmail) {Remove-Item -Force -Path $VerboseEmail}
-New-Item $VerboseEmail
-$DebugLog = "$PSScriptRoot\LetsUploadDebug.log"
-If (Test-Path $DebugLog) {Remove-Item -Force -Path $DebugLog}
-New-Item $DebugLog
-
 <#  Create archive  #>
 $StartArchive = Get-Date
 Debug "Create archive : $BackupName"
-Debug "Archive folder : $UploadFolder"
+Debug "Archive folder : $UF"
 $VolumeSwitch = "-v$VolumeSize"
 $PWSwitch = "-p$ArchivePassword"
 Try {
-	& cmd /c 7z a $VolumeSwitch -t7z -m0=lzma2 -mx=9 -mfb=64 -md=32m -ms=on -mhe=on $PWSwitch "$BackupLocation\$BackupName\$BackupName.7z" "$UploadFolder\*"
+	& cmd /c 7z a $VolumeSwitch -t7z -m0=lzma2 -mx=9 -mfb=64 -md=32m -ms=on -mhe=on $PWSwitch "$BackupLocation\$BackupName\$BackupName.7z" "$UF\*"
 }
 Catch {
 	Debug "Archive Creation ERROR : `n$Error[0]"
@@ -111,7 +130,7 @@ Catch {
 	EmailResults
 	Exit
 }
-Debug "Archive creation finished in $([int]((New-Timespan $StartArchive).TotalMinutes)) minutes."
+Debug "Archive creation finished in $(ElapsedTime (New-Timespan $StartArchive))"
 
 <#  Authorize and get access token  #>
 Debug "Getting access token from LetsUpload"
@@ -165,102 +184,118 @@ $StartUpload = Get-Date
 Debug "Begin uploading files to LetsUpload"
 $Count = (Get-ChildItem "$BackupLocation\$BackupName").Count
 Debug "There are $Count files to upload"
-Email "There are $Count files to upload"
+Debug " "
 $N = 1
 
-Try {
-	Get-ChildItem "$BackupLocation\$BackupName" | ForEach {
+Get-ChildItem "$BackupLocation\$BackupName" | ForEach {
 
-		$FileName = $_.Name;
-		$FilePath = "$BackupLocation\$BackupName\$FileName";
-		
-		$UploadURI = "https://letsupload.io/api/v2/file/upload";
-		Debug "----------------------------"
-		Debug "Encoding file $FileName"
+	$FileName = $_.Name;
+	$FilePath = "$BackupLocation\$BackupName\$FileName";
+	
+	$UploadURI = "https://letsupload.io/api/v2/file/upload";
+	Debug "----------------------------"
+	Debug "Encoding file $FileName"
+	$StartEnc = Get-Date
+	Try {
 		$FileBytes = [System.IO.File]::ReadAllBytes($FilePath);
 		$FileEnc = [System.Text.Encoding]::GetEncoding('UTF-8').GetString($FileBytes);
-		$Boundary = [System.Guid]::NewGuid().ToString(); 
-		$LF = "`r`n";
+	}
+	Catch {
+			Debug "Error in encoding file $N."
+			Debug "$Error[0]"
+			Debug " "
+	}
+	Debug "Finished encoding file in $(ElapsedTime (New-TimeSpan $StartEnc))"
+	$Boundary = [System.Guid]::NewGuid().ToString(); 
+	$LF = "`r`n";
 
-		$BodyLines = (
-			"--$Boundary",
-			"Content-Disposition: form-data; name=`"access_token`"",
-			'',
-			$AccessToken,
-			"--$Boundary",
-			"Content-Disposition: form-data; name=`"account_id`"",
-			'',
-			$AccountID,
-			"--$Boundary",
-			"Content-Disposition: form-data; name=`"folder_id`"",
-			'',
-			$FolderID,
-			"--$Boundary",
-			"Content-Disposition: form-data; name=`"upload_file`"; filename=`"$FileName`"",
-			"Content-Type: application/json",
-			'',
-			$FileEnc,
-			"--$Boundary--"
-		) -join $LF
-			
-		Debug "Uploading $FileName - $N of $Count"
-		$Upload = Invoke-RestMethod -Uri $UploadURI -Method POST -ContentType "multipart/form-data; boundary=`"$boundary`"" -Body $BodyLines
-
+	$BodyLines = (
+		"--$Boundary",
+		"Content-Disposition: form-data; name=`"access_token`"",
+		'',
+		$AccessToken,
+		"--$Boundary",
+		"Content-Disposition: form-data; name=`"account_id`"",
+		'',
+		$AccountID,
+		"--$Boundary",
+		"Content-Disposition: form-data; name=`"folder_id`"",
+		'',
+		$FolderID,
+		"--$Boundary",
+		"Content-Disposition: form-data; name=`"upload_file`"; filename=`"$FileName`"",
+		"Content-Type: application/json",
+		'',
+		$FileEnc,
+		"--$Boundary--"
+	) -join $LF
+		
+	Debug "Uploading $FileName - $N of $Count"
+	$A = 1
+	$BeginUpload = Get-Date
+	Do {
+		Try {
+			$Upload = Invoke-RestMethod -Uri $UploadURI -Method POST -ContentType "multipart/form-data; boundary=`"$boundary`"" -Body $BodyLines
+		} 
+		Catch {
+			Debug "Error in uploading file $N."
+			Debug "$Error[0]"
+			Debug " "
+		}
 		$UResponse = $Upload.response
 		$UURL = $Upload.data.url
 		$USize = $Upload.data.size
 		$UStatus = $Upload._status
 
-		Debug "Response : $UResponse"
-		Debug "URL      : $UURL"
-		Debug "Size     : $USize"
-		Debug "Status   : $UStatus"
+		Debug "Upload try $A : $UResponse"
 
-		If ($UResponse -NotMatch "File uploaded") {
-			Debug "Error in uploading file number $N. Check the log for errors."
-			Email "Error in uploading file number $N. Check the log for errors."
-			EmailResults
-			Exit
-		}
+		$A++
+	} Until (($A -eq 6) -or ($UStatus -match "success"))
 
-		$N++
-	}
-}
-Catch {
-		Debug "Upload ERROR : `n$Error[0]"
-		Email "Upload ERROR : Check Debug Log"
-		Email "Upload ERROR : `n$Error[0]"
+	Debug "Finished uploading file in $(ElapsedTime (New-TimeSpan $BeginUpload))"
+
+	Debug "Response : $UResponse"
+	Debug "URL      : $UURL"
+	Debug "Size     : $USize"
+	Debug "Status   : $UStatus"
+
+	If ($UResponse -NotMatch "File uploaded") {
+		Debug "Error in uploading file number $N. Check the log for errors."
+		Email "Error in uploading file number $N. Check the log for errors."
 		EmailResults
 		Exit
+	}
+
+	$N++
 }
 
-Debug "Upload finished in $([int]((New-Timespan $StartUpload).TotalMinutes)) minutes."
+Debug "----------------------------"
+Debug "Finished uploading $Count files in $(ElapsedTime (New-TimeSpan $StartUpload))"
 
 <#  Delete old backups  #>
-$FilesToDel = Get-ChildItem -Path $BackupLocation -Recurse | Where-Object {$_.LastWriteTime -lt ((Get-Date).AddDays(-$DaysToKeep))}
+$FilesToDel = Get-ChildItem -Path $BackupLocation  | Where-Object {$_.LastWriteTime -lt ((Get-Date).AddDays(-$DaysToKeep))}
 $CountDel = $FilesToDel.Count
-If ($CountDel -gt 0) {Debug "Deleting $CountDel items older than $DaysToKeep days"}
+If ($CountDel -gt 0) {
+	Debug "Deleting $CountDel items older than $DaysToKeep days"
+	Debug "----------------------------"
+}
 $FilesToDel | ForEach {
 	$FullName = $_.FullName
 	$Name = $_.Name
-	If (Test-Path $_.FullName -PathType Leaf) {
-		Remove-Item -Force -Path $FullName
-		Debug "Deleting file  : $Name"
-	}
 	If (Test-Path $_.FullName -PathType Container) {
 		Remove-Item -Force -Recurse -Path $FullName
 		Debug "Deleting folder: $Name"
+	}
+	If (Test-Path $_.FullName -PathType Leaf) {
+		Remove-Item -Force -Path $FullName
+		Debug "Deleting file  : $Name"
 	}
 }
 
 <#  Finish up and email results  #>
 Debug "Upload sucessful. $Count files uploaded to $FolderURL"
 Email "Upload sucessful. $Count files uploaded to $FolderURL"
-$EndTime = New-TimeSpan $StartScript
-If (([int]($EndTime).Hours) -eq 0) {$Hours = ""} ElseIf (([int]($EndTime).Hours) -eq 1) {$Hours = "1 hour,"} Else {$Hours = "$(($EndTime).Hours) hours"}
-If (([int]($EndTime).Minutes) -eq 0) {$Minutes = ""} ElseIf (([int]($EndTime).Minutes) -eq 1) {$Minutes = "1 minute,"} Else {$Minutes = "$(($EndTime).Minutes) minutes"}
-If (([int]($EndTime).Seconds) -eq 0) {$Seconds = ""} ElseIf (([int]($EndTime).Seconds) -eq 1) {$Seconds = "1 second,"} Else {$Seconds = "$(($EndTime).Seconds) seconds"}
-Debug "Script completed in $Hours $Minutes $Seconds"
-Email "Script completed in $Hours $Minutes $Seconds"
+Debug "Script completed in $(ElapsedTime (New-TimeSpan $StartScript))"
+Email "Script completed in $(ElapsedTime (New-TimeSpan $StartScript))"
 Debug "Sending Email"
 EmailResults
