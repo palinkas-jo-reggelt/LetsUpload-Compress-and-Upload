@@ -16,11 +16,11 @@
 	Specifies the name (description) of the archive to be created as well as letsupload folder name
 	
 .NOTES
-	Create account and get API keys from https://www.letsupload.io then fill in $APIKey variables under USER VARIABLES.
-	Run from task scheduler daily.
-	Windows only.
+	Create account and get API keys from https://www.letsupload.io then fill in $APIKey variables under USER VARIABLES
+	Run from task scheduler daily
+	Windows only
 	API: https://letsupload.io/api.html
-	Install latest 7-zip and put into system path.
+	Install latest 7-zip and put into system path
 	
 .EXAMPLE
 	PS C:\Users\username> C:\scripts\letsupload.ps1 "C:\Path\To\Folder\To\Backup" "Backup Description (email, work, etc)"
@@ -116,6 +116,7 @@ If ($UploadName) {
 
 <#  Create archive  #>
 $StartArchive = Get-Date
+Debug "----------------------------"
 Debug "Create archive : $BackupName"
 Debug "Archive folder : $UF"
 $VolumeSwitch = "-v$VolumeSize"
@@ -133,6 +134,7 @@ Catch {
 Debug "Archive creation finished in $(ElapsedTime (New-Timespan $StartArchive))"
 
 <#  Authorize and get access token  #>
+Debug "----------------------------"
 Debug "Getting access token from LetsUpload"
 $URIAuth = "https://letsupload.io/api/v2/authorize"
 $AuthBody = @{
@@ -155,6 +157,7 @@ Debug "Access Token : $AccessToken"
 Debug "Account ID   : $AccountID"
 
 <#  Create Folder  #>
+Debug "----------------------------"
 Debug "Creating Folder $BackupName at LetsUpload"
 $URICF = "https://letsupload.io/api/v2/folder/create"
 $CFBody = @{
@@ -181,10 +184,10 @@ Debug "Folder URL : $FolderURL"
 
 <#  Upload Files  #>
 $StartUpload = Get-Date
+Debug "----------------------------"
 Debug "Begin uploading files to LetsUpload"
 $Count = (Get-ChildItem "$BackupLocation\$BackupName").Count
 Debug "There are $Count files to upload"
-Debug " "
 $N = 1
 
 Get-ChildItem "$BackupLocation\$BackupName" | ForEach {
@@ -252,12 +255,11 @@ Get-ChildItem "$BackupLocation\$BackupName" | ForEach {
 		$A++
 	} Until (($A -eq 6) -or ($UStatus -match "success"))
 
-	Debug "Finished uploading file in $(ElapsedTime (New-TimeSpan $BeginUpload))"
-
 	Debug "Response : $UResponse"
 	Debug "URL      : $UURL"
 	Debug "Size     : $USize"
 	Debug "Status   : $UStatus"
+	Debug "Finished uploading file in $(ElapsedTime (New-TimeSpan $BeginUpload))"
 
 	If ($UResponse -NotMatch "File uploaded") {
 		Debug "Error in uploading file number $N. Check the log for errors."
