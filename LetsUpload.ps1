@@ -41,7 +41,7 @@ Try {
 	.("$PSScriptRoot\LetsUploadConfig.ps1")
 }
 Catch {
-	Write-Output "$(Get-Date) -f G) : ERROR : Unable to load supporting PowerShell Scripts : $query `n$Error[0]" | out-file "$PSScriptRoot\PSError.log" -append
+	Write-Output "$(Get-Date) -f G) : ERROR : Unable to load supporting PowerShell Scripts : $query $Error" | out-file "$PSScriptRoot\PSError.log" -append
 }
 
 <###   FUNCTIONS   ###>
@@ -67,14 +67,14 @@ Function EmailResults {
 		$SMTP.Send($Message)
 	}
 	Catch {
-		Debug "Email ERROR : `n$Error[0]"
+		Debug "Email ERROR : $Error"
 	}
 }
 
 Function ElapsedTime ($TimeSpan) {
-	If (([int]($TimeSpan).TotalHours) -eq 0) {$Hours = ""} ElseIf (([int]($TimeSpan).TotalHours) -eq 1) {$Hours = "1 hour "} Else {$Hours = "$(($TimeSpan).TotalHours) hours "}
-	If (([int]($TimeSpan).Minutes) -eq 0) {$Minutes = ""} ElseIf (([int]($TimeSpan).Minutes) -eq 1) {$Minutes = "1 minute "} Else {$Minutes = "$(($TimeSpan).Minutes) minutes "}
-	If (([int]($TimeSpan).Seconds) -eq 0) {$Seconds = ""} ElseIf (([int]($TimeSpan).Seconds) -eq 1) {$Seconds = "1 second"} Else {$Seconds = "$(($TimeSpan).Seconds) seconds"}
+	If (([int]($TimeSpan).TotalHours) -eq 0) {$Hours = ""} ElseIf (([int]($TimeSpan).TotalHours) -eq 1) {$Hours = "1 hour "} Else {$Hours = "$([int]($TimeSpan).TotalHours) hours "}
+	If (([int]($TimeSpan).Minutes) -eq 0) {$Minutes = ""} ElseIf (([int]($TimeSpan).Minutes) -eq 1) {$Minutes = "1 minute "} Else {$Minutes = "$([int]($TimeSpan).Minutes) minutes "}
+	If (([int]($TimeSpan).Seconds) -eq 0) {$Seconds = ""} ElseIf (([int]($TimeSpan).Seconds) -eq 1) {$Seconds = "1 second"} Else {$Seconds = "$([int]($TimeSpan).Seconds) seconds"}
 	Return "$Hours$Minutes$Seconds"
 }
 
@@ -125,13 +125,15 @@ Try {
 	& cmd /c 7z a $VolumeSwitch -t7z -m0=lzma2 -mx=9 -mfb=64 -md=32m -ms=on -mhe=on $PWSwitch "$BackupLocation\$BackupName\$BackupName.7z" "$UF\*"
 }
 Catch {
-	Debug "Archive Creation ERROR : `n$Error[0]"
+	Debug "Archive Creation ERROR : $Error"
 	Email "Archive Creation ERROR : Check Debug Log"
-	Email "Archive Creation ERROR : `n$Error[0]"
+	Email "Archive Creation ERROR : $Error"
 	EmailResults
 	Exit
 }
 Debug "Archive creation finished in $(ElapsedTime (New-Timespan $StartArchive))"
+Debug "Wait a few seconds to make sure archive is finished"
+Start-Sleep -Seconds 3
 
 <#  Authorize and get access token  #>
 Debug "----------------------------"
@@ -145,9 +147,9 @@ Try{
 	$Auth = Invoke-RestMethod -Method GET $URIAuth -Body $AuthBody -ContentType 'application/json; charset=utf-8' 
 }
 Catch {
-	Debug "LetsUpload Authentication ERROR : `n$Error[0]"
+	Debug "LetsUpload Authentication ERROR : $Error"
 	Email "LetsUpload Authentication ERROR : Check Debug Log"
-	Email "LetsUpload Authentication ERROR : `n$Error[0]"
+	Email "LetsUpload Authentication ERROR : $Error"
 	EmailResults
 	Exit
 }
@@ -170,9 +172,9 @@ Try {
 	$CreateFolder = Invoke-RestMethod -Method GET $URICF -Body $CFBody -ContentType 'application/json; charset=utf-8' 
 }
 Catch {
-	Debug "LetsUpload Folder Creation ERROR : `n$Error[0]"
+	Debug "LetsUpload Folder Creation ERROR : $Error"
 	Email "LetsUpload Folder Creation ERROR : Check Debug Log"
-	Email "LetsUpload Folder Creation ERROR : `n$Error[0]"
+	Email "LetsUpload Folder Creation ERROR : $Error"
 	EmailResults
 	Exit
 }
@@ -193,22 +195,22 @@ $N = 1
 Get-ChildItem "$BackupLocation\$BackupName" | ForEach {
 
 	$FileName = $_.Name;
-	$FilePath = "$BackupLocation\$BackupName\$FileName";
+	$FilePath = $_.FullName;
 	
 	$UploadURI = "https://letsupload.io/api/v2/file/upload";
 	Debug "----------------------------"
 	Debug "Encoding file $FileName"
-	$StartEnc = Get-Date
+	$BeginEnc = Get-Date
 	Try {
 		$FileBytes = [System.IO.File]::ReadAllBytes($FilePath);
-		$FileEnc = [System.Text.Encoding]::GetEncoding('UTF-8').GetString($FileBytes);
+		$FileEnc = [System.Text.Encoding]::GetEncoding('ISO-8859-1').GetString($FileBytes);
 	}
 	Catch {
 			Debug "Error in encoding file $N."
-			Debug "$Error[0]"
+			Debug "$Error"
 			Debug " "
 	}
-	Debug "Finished encoding file in $(ElapsedTime (New-TimeSpan $StartEnc))"
+	Debug "Finished encoding file in $(ElapsedTime (New-TimeSpan $BeginEnc))";
 	$Boundary = [System.Guid]::NewGuid().ToString(); 
 	$LF = "`r`n";
 
@@ -242,15 +244,21 @@ Get-ChildItem "$BackupLocation\$BackupName" | ForEach {
 		} 
 		Catch {
 			Debug "Error in uploading file $N."
-			Debug "$Error[0]"
+			Debug "$Error"
 			Debug " "
 		}
+
 		$UResponse = $Upload.response
 		$UURL = $Upload.data.url
 		$USize = $Upload.data.size
 		$UStatus = $Upload._status
 
-		Debug "Upload try $A : $UResponse"
+		If ($UResponse -notmatch "File uploaded"){
+			$UTry = "Error : Failed to upload file"
+		} Else {
+			$UTry = $Upload.response
+		}
+		Debug "Upload try $A : $UTry"
 
 		$A++
 	} Until (($A -eq 6) -or ($UStatus -match "success"))
@@ -297,7 +305,11 @@ $FilesToDel | ForEach {
 <#  Finish up and email results  #>
 Debug "Upload sucessful. $Count files uploaded to $FolderURL"
 Email "Upload sucessful. $Count files uploaded to $FolderURL"
+Email " "
 Debug "Script completed in $(ElapsedTime (New-TimeSpan $StartScript))"
 Email "Script completed in $(ElapsedTime (New-TimeSpan $StartScript))"
 Debug "Sending Email"
+If (($AttachDebugLog) -and (Test-Path $DebugLog) -and (((Get-Item $DebugLog).length/1MB) -gt $MaxAttachmentSize)){
+	Email "Debug log size exceeds maximum attachment size. Please see log file in script folder"
+}
 EmailResults
