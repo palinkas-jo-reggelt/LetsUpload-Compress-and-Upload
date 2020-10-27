@@ -72,9 +72,9 @@ Function EmailResults {
 }
 
 Function ElapsedTime ($TimeSpan) {
-	If (([int]($TimeSpan).TotalHours) -eq 0) {$Hours = ""} ElseIf (([int]($TimeSpan).TotalHours) -eq 1) {$Hours = "1 hour "} Else {$Hours = "$([int]($TimeSpan).TotalHours) hours "}
+	If (([int]($TimeSpan).Hours) -eq 0) {$Hours = ""} ElseIf (([int]($TimeSpan).Hours) -eq 1) {$Hours = "1 hour "} Else {$Hours = "$([int]($TimeSpan).Hours) hours "}
 	If (([int]($TimeSpan).Minutes) -eq 0) {$Minutes = ""} ElseIf (([int]($TimeSpan).Minutes) -eq 1) {$Minutes = "1 minute "} Else {$Minutes = "$([int]($TimeSpan).Minutes) minutes "}
-	If (([int]($TimeSpan).Seconds) -eq 0) {$Seconds = ""} ElseIf (([int]($TimeSpan).Seconds) -eq 1) {$Seconds = "1 second"} Else {$Seconds = "$([int]($TimeSpan).Seconds) seconds"}
+	If (([int]($TimeSpan).Seconds) -eq 1) {$Seconds = "1 second"} Else {$Seconds = "$([int]($TimeSpan).Seconds) seconds"}
 	Return "$Hours$Minutes$Seconds"
 }
 
@@ -122,7 +122,8 @@ Debug "Archive folder : $UF"
 $VolumeSwitch = "-v$VolumeSize"
 $PWSwitch = "-p$ArchivePassword"
 Try {
-	& cmd /c 7z a $VolumeSwitch -t7z -m0=lzma2 -mx=9 -mfb=64 -md=32m -ms=on -mhe=on $PWSwitch "$BackupLocation\$BackupName\$BackupName.7z" "$UF\*"
+	$SevenZip = & cmd /c 7z a $VolumeSwitch -t7z -m0=lzma2 -mx=9 -mfb=64 -md=32m -ms=on -mhe=on $PWSwitch "$BackupLocation\$BackupName\$BackupName.7z" "$UF\*" | Out-String
+	Debug $SevenZip
 }
 Catch {
 	Debug "Archive Creation ERROR : $Error"
@@ -236,40 +237,35 @@ Get-ChildItem "$BackupLocation\$BackupName" | ForEach {
 	) -join $LF
 		
 	Debug "Uploading $FileName - $N of $Count"
-	$A = 1
+	$UploadTries = 1
 	$BeginUpload = Get-Date
+	
 	Do {
+		$Error.Clear()
+		$Upload = $UResponse = $UURL = $USize = $UStatus = $NULL
 		Try {
 			$Upload = Invoke-RestMethod -Uri $UploadURI -Method POST -ContentType "multipart/form-data; boundary=`"$boundary`"" -Body $BodyLines
+			$UResponse = $Upload.response
+			$UURL = $Upload.data.url
+			$USize = $Upload.data.size
+			$UStatus = $Upload._status
+			Debug "Upload try $A"
+			Debug "Response : $UResponse"
+			Debug "URL      : $UURL"
+			Debug "Size     : $USize"
+			Debug "Status   : $UStatus"
+			Debug "Finished uploading file in $(ElapsedTime (New-TimeSpan $BeginUpload))"
 		} 
 		Catch {
-			Debug "Error in uploading file $N."
-			Debug "$Error"
-			Debug " "
+			Debug "Upload try $A"
+			Debug "[ERROR] : $Error"
 		}
 
-		$UResponse = $Upload.response
-		$UURL = $Upload.data.url
-		$USize = $Upload.data.size
-		$UStatus = $Upload._status
+		$UploadTries++
+	} Until (($UploadTries -eq ($MaxUploadTries + 1)) -or ($UStatus -match "success"))
 
-		If ($UResponse -notmatch "File uploaded"){
-			$UTry = "Error : Failed to upload file"
-		} Else {
-			$UTry = $Upload.response
-		}
-		Debug "Upload try $A : $UTry"
 
-		$A++
-	} Until (($A -eq 6) -or ($UStatus -match "success"))
-
-	Debug "Response : $UResponse"
-	Debug "URL      : $UURL"
-	Debug "Size     : $USize"
-	Debug "Status   : $UStatus"
-	Debug "Finished uploading file in $(ElapsedTime (New-TimeSpan $BeginUpload))"
-
-	If ($UResponse -NotMatch "File uploaded") {
+	If (-not($UStatus -Match "success")) {
 		Debug "Error in uploading file number $N. Check the log for errors."
 		Email "Error in uploading file number $N. Check the log for errors."
 		EmailResults

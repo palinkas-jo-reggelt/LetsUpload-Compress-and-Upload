@@ -38,6 +38,7 @@ $IsPublic          = 0                     # 0 = Private, 1 = Unlisted, 2 = Publ
 $VerboseConsole    = $True                 # If true, will output debug to console
 $VerboseFile       = $True                 # If true, will output debug to file
 $DaysToKeep        = 5                     # Number of days to keep backups on local filesystem - all others will be deleted at end of script
+$MaxUploadTries    = 10                    # If file upload error, number of times to retry before giving up
 
 <###   EMAIL VARIABLES   ###>
 $EmailFrom         = "notify@mydomain.tld"
