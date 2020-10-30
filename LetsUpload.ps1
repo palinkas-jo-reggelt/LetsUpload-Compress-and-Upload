@@ -256,7 +256,7 @@ Get-ChildItem "$BackupLocation\$BackupName" | ForEach {
 			$UResponse = $Upload.response
 			$UURL = $Upload.data.url
 			$USize = $Upload.data.size
-			$USizeFormatted = "{0,8:N2}" -f (($USize)/1MB)
+			$USizeFormatted = "{0:N2}" -f (($USize)/1MB)
 			$UStatus = $Upload._status
 			$UFileID = $upload.data.file_id
 			If ($USize -ne $FileSize) {Throw "Local and remote filesizes do not match!"}
