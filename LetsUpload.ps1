@@ -194,7 +194,7 @@ Catch {
 }
 
 <#  Upload Files  #>
-$StartUpload = Get-Date
+$BeginOffsiteUpload = Get-Date
 Debug "----------------------------"
 Debug "Begin uploading files to LetsUpload"
 $CountArchVol = (Get-ChildItem "$BackupLocation\$BackupName").Count
@@ -321,29 +321,6 @@ Catch {
 $FolderListingStatus = $FolderListing._status
 $RemoteFileCount = ($FolderListing.data.files.id).Count
 
-<#  Report results  #>
-If ($FolderListingStatus -match "success") {
-	Debug "There are $RemoteFileCount files in the remote folder"
-	If ($RemoteFileCount -eq $CountArchVol) {
-		Debug "----------------------------"
-		Debug "Finished uploading $CountArchVol files in $(ElapsedTime $StartUpload)"
-		Debug "Upload sucessful. $CountArchVol files uploaded to $FolderURL"
-		Email "* Offsite upload of backup archive completed successfully:"
-		Email "* $CountArchVol files uploaded to $FolderURL"
-	} Else {
-		Debug "----------------------------"
-		Debug "Finished uploading in $(ElapsedTime $StartUpload)"
-		Debug "[ERROR] Number of archive files uploaded does not match count in remote folder"
-		Debug "[ERROR] Archive volumes   : $CountArchVol"
-		Debug "[ERROR] Remote file count : $RemoteFileCount"
-		Email "[ERROR] Number of archive files uploaded does not match count in remote folder - see debug log"
-	}
-} Else {
-	Debug "----------------------------"
-	Debug "Error : Unable to obtain file count from remote folder"
-	Email "[ERROR] Unable to obtain uploaded file count from remote folder - see debug log"
-}
-
 <#  Delete old backups  #>
 If ($DeleteOldBackups) {
 	$FilesToDel = Get-ChildItem -Path $BackupLocation  | Where-Object {$_.LastWriteTime -lt ((Get-Date).AddDays(-$DaysToKeep))}
@@ -364,6 +341,29 @@ If ($DeleteOldBackups) {
 			Debug "Deleting file  : $Name"
 		}
 	}
+}
+
+<#  Report results  #>
+If ($FolderListingStatus -match "success") {
+	Debug "There are $RemoteFileCount files in the remote folder"
+	If ($RemoteFileCount -eq $CountArchVol) {
+		Debug "----------------------------"
+		Debug "[OK] Finished backup and offsite upload script in $(ElapsedTime $StartScript)"
+		Debug "[OK] Upload sucessful. $CountArchVol files uploaded to $FolderURL"
+		Email "[OK] Backup and offsite upload completed successfully in $(ElapsedTime $StartScript)"
+		Email "[OK] $CountArchVol files uploaded to $FolderURL"
+	} Else {
+		Debug "----------------------------"
+		Debug "Finished backup and offsite upload script in $(ElapsedTime $StartScript)"
+		Debug "[ERROR] Number of archive files uploaded does not match count in remote folder"
+		Debug "[ERROR] Archive volumes   : $CountArchVol"
+		Debug "[ERROR] Remote file count : $RemoteFileCount"
+		Email "[ERROR] Number of archive files uploaded does not match count in remote folder - see debug log"
+	}
+} Else {
+	Debug "----------------------------"
+	Debug "Error : Unable to obtain file count from remote folder"
+	Email "[ERROR] Unable to obtain uploaded file count from remote folder - see debug log"
 }
 
 <#  Finish up and email results  #>
