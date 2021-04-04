@@ -349,6 +349,78 @@ Function OffsiteUpload {
 
 }
 
+Function DeleteEmptyRemoteFolders {
+
+	<#  Authorize and get access token  #>
+	Debug "----------------------------"
+	Debug "Begin delete empty folder process"
+	Debug "Getting access token from LetsUpload"
+	$URIAuth = "https://letsupload.io/api/v2/authorize"
+	$AuthBody = @{
+		'key1' = $APIKey1;
+		'key2' = $APIKey2;
+	}
+	$GetAccessTokenTries = 1
+	Do {
+		Try{
+			$Auth = Invoke-RestMethod -Method GET $URIAuth -Body $AuthBody -ContentType 'application/json; charset=utf-8' 
+			$AccessToken = $Auth.data.access_token
+			$AccountID = $Auth.data.account_id
+			Debug "Access Token : $AccessToken"
+			Debug "Account ID   : $AccountID"
+		}
+		Catch {
+			Debug "LetsUpload Authentication ERROR : Try $GetAccessTokenTries : $($Error[0])"
+		}
+		$GetAccessTokenTries++
+	} Until (($GetAccessTokenTries -gt $MaxUploadTries) -or ($AccessToken -match "^\w{128}$"))
+	If ($GetAccessTokenTries -gt $MaxUploadTries) {
+		Debug "LetsUpload Authentication ERROR : Giving up"
+		Email "[ERROR] LetsUpload Authentication : Check Debug Log"
+		EmailResults
+		Exit
+	}
+
+	Debug "----------------------------"
+	Debug "Deleting Empty Folders at LetsUpload"
+	$URIFL = "https://letsupload.io/api/v2/folder/listing"
+	$FLBody = @{
+		'access_token' = $AccessToken;
+		'account_id' = $AccountID;
+	}
+	$FolderInfo = Invoke-RestMethod -Method GET $URIFL -Body $FLBody -ContentType 'application/json; charset=utf-8' 
+	$FolderListing = $FolderInfo.data.folders
+	$DeleteFolderCount = 0
+	ForEach ($Folder in $FolderListing) {
+		$FolderID = $Folder.id
+		$FolderName = $Folder.folderName
+		$FileCount = $Folder.file_count
+		If ($FileCount -eq 0) {
+			Try {
+				Debug "----------------------------"
+				Debug "Deleting Folder: $FolderName"
+				$URIDF = "https://letsupload.io/api/v2/folder/delete"
+				$DFBody = @{
+					'access_token' = $AccessToken;
+					'account_id' = $AccountID;
+					'folder_id' = $FolderID;
+				}
+				$FolderDelete = Invoke-RestMethod -Method GET $URIDF -Body $DFBody -ContentType 'application/json; charset=utf-8'
+				Debug $($FolderDelete.response)
+				$DeleteFolderCount++
+				If ($FolderDelete._status -ne "success") {Throw "Empty folder $FolderName delete FAILED"}
+			}
+			Catch {
+				Debug "Folder delete ERROR : $($Error[0])"
+				Email "[ERROR] Folder delete ERROR : $($Error[0])"
+			}
+		}
+	}
+	If ($DeleteFolderCount -eq 0) {
+		Debug "No empty folders to delete"
+	}
+}
+
 Function CheckForUpdates {
 	Debug "----------------------------"
 	Debug "Checking for script update at GitHub"
@@ -409,7 +481,7 @@ $Error.Clear()
 
 <#  Use UploadName (or not)  #>
 $UploadName = $UploadName -Replace '\s','_'
-$UploadName = $UploadName -Replace '[^a-zA-Z0-9-]',''
+$UploadName = $UploadName -Replace '[^a-zA-Z0-9_]',''
 If ($UploadName) {
 	$BackupName = "$((Get-Date).ToString('yyyy-MM-dd'))_$UploadName"
 } Else {
@@ -423,7 +495,7 @@ New-Item $EmailBody
 $DebugLog = $BackupLocation + "\" + $BackupName + "_Debug.log"
 If (Test-Path $DebugLog) {Remove-Item -Force -Path $DebugLog}
 New-Item $DebugLog
-Write-Output "::: hMailServer Backup Routine $(Get-Date -f D) :::" | Out-File $DebugLog -Encoding ASCII -Append
+Write-Output "::: $UploadName Backup Routine $(Get-Date -f D) :::" | Out-File $DebugLog -Encoding ASCII -Append
 Write-Output " " | Out-File $DebugLog -Encoding ASCII -Append
 If ($UseHTML) {
 	Write-Output "
@@ -462,6 +534,9 @@ MakeArchive
 
 <#  Upload archive to LetsUpload.io  #>
 OffsiteUpload
+
+<#  Delete empty folders at LetsUpload.io  #>
+DeleteEmptyRemoteFolders
 
 <#  Check for updates  #>
 CheckForUpdates
