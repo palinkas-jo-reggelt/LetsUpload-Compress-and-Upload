@@ -20,7 +20,7 @@
 	Create account and get API keys from https://www.letsupload.io then fill in $APIKey variables under USER VARIABLES.
 	Run from task scheduler daily.
 	Windows only.
-	API: https://letsupload.io/api.html
+	API: https://letsupload.io/api
 	Install latest 7-zip and put into system path.
 	
 .EXAMPLE

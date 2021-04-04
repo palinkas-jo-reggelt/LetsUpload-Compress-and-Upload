@@ -19,7 +19,7 @@
 	Create account and get API keys from https://www.letsupload.io then fill in $APIKey variables under USER VARIABLES
 	Run from task scheduler daily
 	Windows only
-	API: https://letsupload.io/api.html
+	API: https://letsupload.io/api
 	Install latest 7-zip and put into system path
 	
 .EXAMPLE
@@ -357,7 +357,7 @@ Function CheckForUpdates {
 	$GitHubVersionTries = 1
 	Do {
 		Try {
-			$GitHubVersion = [decimal](Invoke-WebRequest -UseBasicParsing -Method GET -URI https://raw.githubusercontent.com/palinkas-jo-reggelt/LetsUpload-Compress-and-Upload/main/version.txt).Content
+			$GitHubVersion = [decimal](Invoke-WebRequest -UseBasicParsing -Method GET -URI https://raw.githubusercontent.com/palinkas-jo-reggelt/LetsUpload-Compress-and-Upload/master/version.txt).Content
 			$GetGitHubVersion = $True
 		}
 		Catch {
@@ -420,7 +420,7 @@ If ($UploadName) {
 $EmailBody = "$PSScriptRoot\EmailBody.log"
 If (Test-Path $EmailBody) {Remove-Item -Force -Path $EmailBody}
 New-Item $EmailBody
-$DebugLog = "$BackupLocation\$($BackupName)_Debug.log"
+$DebugLog = $BackupLocation + "\" + $BackupName + "_Debug.log"
 If (Test-Path $DebugLog) {Remove-Item -Force -Path $DebugLog}
 New-Item $DebugLog
 Write-Output "::: hMailServer Backup Routine $(Get-Date -f D) :::" | Out-File $DebugLog -Encoding ASCII -Append
