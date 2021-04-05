@@ -95,7 +95,7 @@ New-Item $DebugLog
 <#  Validate backup folder  #>
 $DF = $DownloadFolder -Replace('\\$','')
 If (Test-Path $DF) {
-	Debug "The folder to be backed up is $DF"
+	Debug "The folder to store downloaded files is $DF"
 } Else {
 	Debug "Error : The folder to be backed up could not be found. Quitting Script"
 	Debug "$DownloadFolder does not exist"
@@ -132,7 +132,6 @@ $URIFolderListing = "https://letsupload.io/api/v2/folder/listing"
 $FLBody = @{
 	'access_token' = $AccessToken;
 	'account_id' = $AccountID;
-	'parent_folder_id' = "";
 }
 Try{
 	$FolderListing = Invoke-RestMethod -Method GET $URIFolderListing -Body $FLBody -ContentType 'application/json; charset=utf-8'
@@ -145,7 +144,6 @@ Catch {
 	Exit
 }
 $NewestBackup = $FolderListing.data.folders | Sort-Object date_added -Descending | Where {$_.folderName -match $BackupName} | Select -First 1
-$NewestBackup
 $FolderID = $NewestBackup.id
 $FolderName = $NewestBackup.folderName
 Debug "Folder Name: $FolderName"
@@ -173,6 +171,7 @@ Catch {
 $Count = ($FileListing.data.files).Count
 Debug "File count: $Count"
 $N = 1
+$DLSuccess = 0
 Debug "Starting file download"
 
 <#  Loop through results and download files  #>
@@ -184,7 +183,6 @@ $FileListing.data.files | ForEach {
 	Debug "File $N of $Count"
 	Debug "File ID     : $FileID"
 	Debug "File Name   : $FileName"
-	Debug "URL         : $FileURL"
 
 	$URIDownload = "https://letsupload.io/api/v2/file/download"
 	$DLBody = @{
@@ -203,18 +201,19 @@ $FileListing.data.files | ForEach {
 		Exit
 	}
 
-	$FDStatus = $FileDownload.data._status
-	If ($FDStatus -notmatch "sucess") {
+	$FDStatus = $FileDownload._status
+	If ($FDStatus -notmatch "success") {
 		Debug "Error : Could not obtain download URL"
 	} Else {
-		Debug "Download URL: $DownloadURL"
 		$DownloadURL = $FileDownload.data.download_url
+		Debug "Download URL: $DownloadURL"
 		<#  Download file using BITS  #>
 		Try {
 			$BeginDL = Get-Date
 			Import-Module BitsTransfer
 			Start-BitsTransfer -Source $DownloadURL -Destination "$DF\$FileName"
 			Debug "File $N downloaded in $(ElapsedTime (New-TimeSpan $BeginDL))"
+			If (Test-Path "$DF\$FileName") {$DLSuccess++}
 		}
 		Catch {
 			Debug "BITS ERROR downloading file $N of $FileCount : $Error"
@@ -225,8 +224,15 @@ $FileListing.data.files | ForEach {
 }
 
 <#  Finish up and email results  #>
-Debug "Download sucessful. $Count files downloaded to $FolderURL"
-Email "Download sucessful. $Count files downloaded to $FolderURL"
+Debug "----------------------------"
+If ($DLSuccess -eq $Count) {
+	Debug "Download sucessful. $Count files downloaded to $DF"
+	Email "Download sucessful. $Count files downloaded to $DF"
+} Else {
+	Debug "Download FAILED to download $($Count - $DLSuccess) files - check debug log"
+	Email "Download FAILED to download $($Count - $DLSuccess) files - check debug log"
+}
+
 Email " "
 Debug "Script completed in $(ElapsedTime (New-TimeSpan $StartScript))"
 Email "Script completed in $(ElapsedTime (New-TimeSpan $StartScript))"

@@ -70,7 +70,7 @@ Function EmailResults {
 		$Message.IsBodyHTML = $UseHTML
 		If (($AttachDebugLog) -and (Test-Path $DebugLog) -and (((Get-Item $DebugLog).length/1MB) -lt $MaxAttachmentSize)){$Message.Attachments.Add($DebugLog)}
 		$SMTP = New-Object System.Net.Mail.SMTPClient $SMTPServer,$SMTPPort
-		$SMTP.EnableSsl = $SSL
+		$SMTP.EnableSsl = $UseSSL
 		$SMTP.Credentials = New-Object System.Net.NetworkCredential($SMTPAuthUser, $SMTPAuthPass); 
 		$SMTP.Send($Message)
 	}

@@ -1,6 +1,8 @@
 # Ignore files
 /LetsUploadConfig.ps1
 /EmailBody.log
+/VerboseEmail.log
+/LetsUploadDebug.log
 
 # Ignoring directories
 # Both the directory itself and its contents will be ignored.
